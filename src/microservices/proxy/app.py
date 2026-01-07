@@ -5,6 +5,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from proxy import forward
 
+
 app = FastAPI(title="CinemaAbyss Proxy (Strangler Fig)")
 
 PORT = int(os.getenv("PORT", "8000"))
@@ -30,6 +31,10 @@ def pick_backend_for_movies(user_id: str | None) -> str:
 
 @app.get("/healthz")
 async def healthz():
+    return {"status": True}
+
+@app.get("/health")
+async def health():
     return {"status": True}
 
 @app.api_route("/api/movies{full_path:path}", methods=["GET","POST","PUT","PATCH","DELETE","OPTIONS","HEAD"])
