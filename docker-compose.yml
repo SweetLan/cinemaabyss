@@ -27,7 +27,7 @@ services:
     image: wurstmeister/zookeeper:latest
     container_name: cinemaabyss-zookeeper
     ports:
-      - "2181:2181"
+      - "22181:2181"
     networks:
       - cinemaabyss-network
 
@@ -89,15 +89,19 @@ services:
       dockerfile: Dockerfile
     container_name: cinemaabyss-events-service
     depends_on:
-      - postgres
       - kafka
     ports:
       - "8082:8082"
     environment:
       PORT: 8082
       KAFKA_BROKERS: kafka:9092
+      TOPIC_MOVIE: movie-events
+      TOPIC_USER: user-events
+      TOPIC_PAYMENT: payment-events
+      CONSUMER_GROUP_ID: events-service
     networks:
       - cinemaabyss-network
+
 
   # Proxy Service (API Gateway)
   proxy-service:

@@ -1,109 +1,248 @@
-import os, json, asyncio, logging
-from typing import Optional, Literal
+import json
+import logging
+import os
+import threading
+import time
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional, Tuple
+
+from confluent_kafka import Consumer, Producer, KafkaException
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field
-from aiokafka import AIOKafkaProducer, AIOKafkaConsumer, AIOKafkaAdminClient
-from aiokafka.admin import NewTopic
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
+from pythonjsonlogger import jsonlogger
 
-# ----- конфиг -----
-KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP", "kafka:29092")
-GROUP_ID = os.getenv("KAFKA_GROUP_ID", "events-service")
+# -------------------------
+# Настройки
+# -------------------------
+PORT = int(os.getenv("PORT", "8082"))
+KAFKA_BROKERS = os.getenv("KAFKA_BROKERS", "kafka:9092")
 
-TOPIC_USER = "events.user"
-TOPIC_PAYMENT = "events.payment"
-TOPIC_MOVIE = "events.movie"
-TOPICS = [TOPIC_USER, TOPIC_PAYMENT, TOPIC_MOVIE]
+TOPIC_MOVIE = os.getenv("TOPIC_MOVIE", "movie-events")
+TOPIC_USER = os.getenv("TOPIC_USER", "user-events")
+TOPIC_PAYMENT = os.getenv("TOPIC_PAYMENT", "payment-events")
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-log = logging.getLogger("events")
+CONSUMER_GROUP_ID = os.getenv("CONSUMER_GROUP_ID", "events-service")
 
+# -------------------------
+# Логи
+# -------------------------
+root_logger = logging.getLogger()
+root_logger.setLevel(logging.INFO)
+handler = logging.StreamHandler()
+handler.setFormatter(jsonlogger.JsonFormatter("%(asctime)s %(levelname)s %(name)s %(message)s"))
+root_logger.handlers.clear()
+root_logger.addHandler(handler)
+
+logger = logging.getLogger("events-service")
+
+# -------------------------
+# Модель данных
+# -------------------------
+class MovieEvent(BaseModel):
+    movie_id: int
+    title: str
+    action: str
+    user_id: Optional[int] = None
+    rating: Optional[float] = None
+    genres: Optional[List[str]] = None
+    description: Optional[str] = None
+
+
+class UserEvent(BaseModel):
+    user_id: int
+    username: Optional[str] = None
+    email: Optional[str] = None
+    action: str
+    timestamp: datetime
+
+
+class PaymentEvent(BaseModel):
+    payment_id: int
+    user_id: int
+    amount: float
+    status: str
+    timestamp: datetime
+    method_type: Optional[str] = None
+
+
+def now_utc() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def make_envelope(event_type: str, payload: Dict[str, Any], event_id: str) -> Dict[str, Any]:
+    return {
+        "id": event_id,
+        "type": event_type,
+        "timestamp": now_utc().isoformat(),
+        "payload": payload,
+    }
+
+
+# -------------------------
+# Kafka 
+# -------------------------
+producer: Optional[Producer] = None
+
+_stop_flag = threading.Event()
+_consumer_thread: Optional[threading.Thread] = None
+
+
+def _delivery_report(err, msg):
+    if err is not None:
+        logger.error("delivery_failed", extra={"error": str(err), "topic": msg.topic()})
+    else:
+        logger.info(
+            "produced_message",
+            extra={"topic": msg.topic(), "partition": msg.partition(), "offset": msg.offset()},
+        )
+
+
+def kafka_send(topic: str, message: Dict[str, Any]) -> Tuple[int, int]:
+    if producer is None:
+        raise RuntimeError("Kafka producer not initialized")
+
+    payload = json.dumps(message, ensure_ascii=False).encode("utf-8")
+
+    # produce async + flush to get delivery
+    producer.produce(topic, value=payload, on_delivery=_delivery_report)
+    producer.flush(10)
+
+    # confluent-kafka не возвращает partition/offset прямо из produce без callback.
+    # Чтобы Postman/ответ были стабильными — вернём -1/-1 
+    return -1, -1
+
+
+def consumer_worker(topics: List[str]) -> None:
+    conf = {
+        "bootstrap.servers": KAFKA_BROKERS,
+        "group.id": CONSUMER_GROUP_ID,
+        "auto.offset.reset": "earliest",
+        "enable.auto.commit": True,
+    }
+
+    while not _stop_flag.is_set():
+        try:
+            consumer = Consumer(conf)
+            consumer.subscribe(topics)
+            logger.info("consumer_started", extra={"topics": topics, "group_id": CONSUMER_GROUP_ID})
+
+            while not _stop_flag.is_set():
+                msg = consumer.poll(1.0)
+                if msg is None:
+                    continue
+                if msg.error():
+                    logger.error("consumer_msg_error", extra={"error": str(msg.error())})
+                    continue
+
+                try:
+                    value = json.loads(msg.value().decode("utf-8"))
+                except Exception:
+                    value = msg.value().decode("utf-8", errors="replace")
+
+                logger.info(
+                    "event_processed",
+                    extra={
+                        "topic": msg.topic(),
+                        "partition": msg.partition(),
+                        "offset": msg.offset(),
+                        "value": value,
+                    },
+                )
+
+            consumer.close()
+        except KafkaException as e:
+            logger.error("consumer_error", extra={"error": str(e)})
+            time.sleep(2)
+        except Exception as e:
+            logger.error("consumer_unexpected_error", extra={"error": str(e)})
+            time.sleep(2)
+
+
+# -------------------------
+# FastAPI 
+# -------------------------
 app = FastAPI(title="CinemaAbyss Events Service")
 
-producer: Optional[AIOKafkaProducer] = None
-consumer_task: Optional[asyncio.Task] = None
-
-class EventIn(BaseModel):
-    type: Literal["User", "Payment", "Movie"] = Field(..., description="Тип события")
-    payload: dict = Field(default_factory=dict, description="Произвольные данные события")
-
-def topic_for(evt_type: str) -> str:
-    return {
-        "User": TOPIC_USER,
-        "Payment": TOPIC_PAYMENT,
-        "Movie": TOPIC_MOVIE,
-    }[evt_type]
-
-async def ensure_topics():
-    """Создаём топики, если их ещё нет."""
-    admin = AIOKafkaAdminClient(bootstrap_servers=KAFKA_BOOTSTRAP)
-    await admin.start()
-    try:
-        existing = set(await admin.list_topics())
-        to_create = [t for t in TOPICS if t not in existing]
-        if to_create:
-            log.info(f"Creating topics: {to_create}")
-            new_topics = [NewTopic(name=t, num_partitions=1, replication_factor=1) for t in to_create]
-            await admin.create_topics(new_topics=new_topics, validate_only=False)
-    finally:
-        await admin.close()
-
-async def run_consumer():
-    """Фоновый consumer: читает все три топика и пишет в лог."""
-    consumer = AIOKafkaConsumer(
-        *TOPICS,
-        bootstrap_servers=KAFKA_BOOTSTRAP,
-        group_id=GROUP_ID,
-        enable_auto_commit=True,
-        auto_offset_reset="earliest",
-    )
-    await consumer.start()
-    log.info("Kafka consumer started")
-    try:
-        async for msg in consumer:
-            try:
-                value = msg.value.decode("utf-8")
-            except Exception:
-                value = str(msg.value)
-            log.info(f"[consume] topic={msg.topic} partition={msg.partition} offset={msg.offset} value={value}")
-    finally:
-        await consumer.stop()
-        log.info("Kafka consumer stopped")
 
 @app.on_event("startup")
-async def on_startup():
-    global producer, consumer_task
-    await ensure_topics()
-    producer = AIOKafkaProducer(bootstrap_servers=KAFKA_BOOTSTRAP)
-    await producer.start()
-    consumer_task = asyncio.create_task(run_consumer())
-    log.info("Kafka producer started")
+def on_startup() -> None:
+    global producer, _consumer_thread
+
+    producer = Producer({"bootstrap.servers": KAFKA_BROKERS})
+
+    _stop_flag.clear()
+    _consumer_thread = threading.Thread(
+        target=consumer_worker,
+        args=([TOPIC_MOVIE, TOPIC_USER, TOPIC_PAYMENT],),
+        daemon=True,
+    )
+    _consumer_thread.start()
+
+    logger.info(
+        "service_started",
+        extra={"port": PORT, "kafka_brokers": KAFKA_BROKERS, "topics": [TOPIC_MOVIE, TOPIC_USER, TOPIC_PAYMENT]},
+    )
+
 
 @app.on_event("shutdown")
-async def on_shutdown():
-    global producer, consumer_task
+def on_shutdown() -> None:
+    global producer
+
+    _stop_flag.set()
+    if _consumer_thread:
+        _consumer_thread.join(timeout=5)
+
     if producer:
-        await producer.stop()
-    if consumer_task:
-        consumer_task.cancel()
+        producer.flush(5)
+        producer = None
 
-@app.get("/healthz")
-async def healthz():
-    return {"status": True, "bootstrap": KAFKA_BOOTSTRAP, "group": GROUP_ID, "topics": TOPICS}
 
-@app.post("/api/events")
-async def create_event(evt: EventIn):
-    """Создаёт событие и возвращает, в какой топик оно отправлено."""
-    if not producer:
-        raise HTTPException(status_code=503, detail="producer not ready")
+@app.get("/api/events/health")
+def health():
+    return {"status": True}
 
-    topic = topic_for(evt.type)
-    payload = evt.model_dump()
-    data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
 
+@app.post("/api/events/movie", status_code=201)
+def create_movie_event(body: MovieEvent):
     try:
-        md = await producer.send_and_wait(topic, value=data)
-        log.info(f"[produce] topic={topic} metadata={md.topic}:{md.partition}@{md.offset} value={payload}")
-        return {"status": "queued", "topic": topic, "offset": md.offset}
+        event_id = f"movie-{body.movie_id}-{body.action}"
+        envelope = make_envelope("movie", body.model_dump(), event_id)
+        partition, offset = kafka_send(TOPIC_MOVIE, envelope)
+        logger.info("movie_event_created", extra={"event_id": event_id, "topic": TOPIC_MOVIE})
+        return {"status": "success", "partition": partition, "offset": offset, "event": envelope}
     except Exception as e:
-        log.exception("produce failed")
-        raise HTTPException(status_code=500, detail=f"produce failed: {e}")
+        logger.exception("movie_event_failed", extra={"error": str(e)})
+        raise HTTPException(status_code=500, detail="Failed to produce movie event")
+
+
+@app.post("/api/events/user", status_code=201)
+def create_user_event(body: UserEvent):
+    try:
+        event_id = f"user-{body.user_id}-{body.action}"
+        envelope = make_envelope("user", body.model_dump(mode="json"), event_id)
+        partition, offset = kafka_send(TOPIC_USER, envelope)
+        logger.info("user_event_created", extra={"event_id": event_id, "topic": TOPIC_USER})
+        return {"status": "success", "partition": partition, "offset": offset, "event": envelope}
+    except Exception as e:
+        logger.exception("user_event_failed", extra={"error": str(e)})
+        raise HTTPException(status_code=500, detail="Failed to produce user event")
+
+
+@app.post("/api/events/payment", status_code=201)
+def create_payment_event(body: PaymentEvent):
+    try:
+        event_id = f"payment-{body.payment_id}-{body.status}"
+        envelope = make_envelope("payment", body.model_dump(mode="json"), event_id)
+        partition, offset = kafka_send(TOPIC_PAYMENT, envelope)
+        logger.info("payment_event_created", extra={"event_id": event_id, "topic": TOPIC_PAYMENT})
+        return {"status": "success", "partition": partition, "offset": offset, "event": envelope}
+    except Exception as e:
+        logger.exception("payment_event_failed", extra={"error": str(e)})
+        raise HTTPException(status_code=500, detail="Failed to produce payment event")
+
+
+@app.exception_handler(Exception)
+def unhandled_exception_handler(_, exc: Exception):
+    logger.exception("unhandled_exception", extra={"error": str(exc)})
+    return JSONResponse(status_code=500, content={"error": "Internal Server Error"})

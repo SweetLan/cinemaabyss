@@ -16,11 +16,11 @@ System(cinema, "Кинобездна", "Онлайн-кинотеатр-агре
 
 Container_Boundary(cinema, "Кинобездна (Kubernetes)") {
   Container(web, "Web / Mobile / TV UI", "SPA/Native", "Клиентские приложения (веб/мобайл/TV)")
-  Container(apiGw, "API Gateway / Ingress", "NGINX / Kong", "Единая точка входа в систему")
+  Container(apiGw, "Proxy Service (API Gateway)", "Единая точка входа в систему")
 
   Container(auth, "Auth Service", "Go", "Регистрация, логин, выдача JWT, роли")
   Container(profile, "Profile Service", "Go", "Профили пользователей")
-  Container(metadata, "Metadata Service", "Go", "Карточки фильмов, жанры, актёры")
+  Container(movies, "Movies Service", "Go", "Карточки фильмов, жанры, актёры")
   Container(search, "Search API", "Go", "Поиск/фильтрация по каталогу")
   Container(fav, "Favorites & Ratings", "Go", "Избранное и пользовательские оценки")
   Container(ingest, "Content Ingestion", "Go", "Импорт метаданных и загрузка объектов в S3")
@@ -29,7 +29,7 @@ Container_Boundary(cinema, "Кинобездна (Kubernetes)") {
   Container(payments, "Payments Orchestrator", "Go", "Оркестрация платежей, коллбеки платёжных шлюзов")
 
   Container(recAdapter, "Recommendations Adapter", "Go", "Адаптер к внешней рекомендационной системе")
-  Container(kafka, "Kafka (Event Bus)", "Apache Kafka", "Внутренние события (MVP)")
+  Container(kafka, "Kafka (Event Service)", "Apache Kafka", "Внутренние события")
 
   ContainerDb(dbUsers, "Users DB", "PostgreSQL", "Учётные записи, профили")
   ContainerDb(dbCatalog, "Catalog DB", "PostgreSQL", "Метаданные фильмов")
@@ -53,7 +53,7 @@ Rel(web, apiGw, "REST/JSON", "HTTPS")
 ' --- API Gateway → сервисы
 Rel(apiGw, auth, "REST/JSON + JWT")
 Rel(apiGw, profile, "REST/JSON")
-Rel(apiGw, metadata, "REST/JSON")
+Rel(apiGw, movies, "REST/JSON")
 Rel(apiGw, search, "REST/JSON")
 Rel(apiGw, fav, "REST/JSON")
 Rel(apiGw, ingest, "REST/JSON")
@@ -62,7 +62,7 @@ Rel(apiGw, payments, "REST/JSON")
 Rel(apiGw, recAdapter, "REST/JSON")
 
 ' --- Рекомендации
-Rel(metadata, recAdapter, "Запросы рекоменд. списков", "REST")
+Rel(movies, recAdapter, "Запросы рекоменд. списков", "REST")
 Rel(recAdapter, rabbitReco, "Publish/Consume (request/reply)", "AMQP/RabbitMQ")
 Rel(rabbitReco, reco, "Доставка сообщений к внешнему движку", "AMQP")
 
@@ -75,7 +75,7 @@ Rel(pay, payments, "Webhook: success/fail/cancel", "HTTPS")
 ' --- События (внутренние)
 Rel(auth, kafka, "events")
 Rel(profile, kafka, "events")
-Rel(metadata, kafka, "events")
+Rel(movies, kafka, "events")
 Rel(search, kafka, "events")
 Rel(fav, kafka, "events")
 Rel(subs, kafka, "events")
@@ -84,14 +84,14 @@ Rel(payments, kafka, "events")
 ' --- Данные
 Rel(auth, dbUsers, "SQL")
 Rel(profile, dbUsers, "SQL")
-Rel(metadata, dbCatalog, "SQL")
+Rel(movies, dbCatalog, "SQL")
 Rel(search, dbCatalog, "read")
 Rel(fav, dbRates, "SQL")
 Rel(subs, dbSubs, "SQL")
 Rel(payments, dbPay, "SQL")
 
 Rel_R(web, cache, "cache")
-Rel_R(metadata, cache, "cache")
+Rel_R(movies, cache, "cache")
 Rel_R(fav, cache, "cache")
 Rel_R(profile, cache, "cache")
 
