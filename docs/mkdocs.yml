@@ -1,0 +1,10 @@
+site_name: Cinemaabyss Documentation
+theme: readthedocs
+markdown_extensions:
+  - md_in_html
+  - meta
+  - plantuml_markdown:
+      server: https://www.plantuml.com/plantuml/
+plugins:
+  - search
+  - swagger-ui-tag
