@@ -303,10 +303,10 @@ cat .docker/config.json | base64
 ![alt text](image-15.png)
 
 # Задание 4
-Для простоты дальнейшего обновления и развертывания вам как архитектуру необходимо так же реализовать helm-чарты для прокси-сервиса и проверить работу 
+Для простоты дальнейшего обновления и развертывания реализованы helm-чарты для прокси-сервиса и проверена работа
 
 Для этого:
-1. Перейдите в директорию helm и отредактируйте файл values.yaml
+1.Отредактирован файл values.yaml
 
 ```yaml
 # Proxy service configuration
@@ -330,14 +330,14 @@ proxyService:
     type: ClusterIP
 ```
 
-- Вместо ghcr.io/db-exp/cinemaabysstest/proxy-service напишите свой путь до образа для всех сервисов
-- для imagePullSecret проставьте свое значение (скопируйте из конфигурации kubernetes)
+- Вместо ghcr.io/db-exp/cinemaabysstest/proxy-service указан свой путь до образа для всех сервисов
+- для imagePullSecret проставлено свое значение (скопируйте из конфигурации kubernetes)
   ```yaml
   imagePullSecrets:
       dockerconfigjson: ewoJImF1dGhzIjogewoJCSJnaGNyLmlvIjogewoJCQkiYXV0aCI6ICJaR0l0Wlhod09tZG9jRjl2UTJocVZIa3dhMWhKVDIxWmFVZHJOV2hRUW10aFVXbFZSbTVaTjJRMFNYUjRZMWM9IgoJCX0KCX0sCgkiY3JlZHNTdG9yZSI6ICJkZXNrdG9wIiwKCSJjdXJyZW50Q29udGV4dCI6ICJkZXNrdG9wLWxpbnV4IiwKCSJwbHVnaW5zIjogewoJCSIteC1jbGktaGludHMiOiB7CgkJCSJlbmFibGVkIjogInRydWUiCgkJfQoJfSwKCSJmZWF0dXJlcyI6IHsKCQkiaG9va3MiOiAidHJ1ZSIKCX0KfQ==
   ```
 
-2. В папке ./templates/services заполните шаблоны для proxy-service.yaml и events-service.yaml (опирайтесь на свою kubernetes конфигурацию - смысл helm'а сделать шаблоны для быстрого обновления и установки)
+2. В папке ./templates/services заполнены шаблоны для proxy-service.yaml и events-service.yaml
 
 ```yaml
 template:
@@ -349,7 +349,7 @@ template:
        Тут ваша конфигурация
 ```
 
-3. Проверьте установку
+3. Проверена установка
 Сначала удалим установку руками
 
 ```bash
@@ -372,10 +372,9 @@ kubectl get pods -n cinemaabyss
 minikube tunnel
 ```
 
-Потом вызовите 
-https://cinemaabyss.example.com/api/movies
-и приложите скриншот развертывания helm и вывода https://cinemaabyss.example.com/api/movies
 
+![скриншот развертывания helm ](image-17.png)
+![скриншот вывода https://cinemaabyss.example.com/api/movies](image-18.png)
 ## Удаляем все
 
 ```bash
