@@ -8,6 +8,12 @@ on:
       - 'src/**'
       - 'docker-compose.yml'
       - '.github/workflows/docker-build-push.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'src/**'
+      - 'docker-compose.yml'
+      - '.github/workflows/docker-build-push.yml'
   release:
     types: [published]
 
@@ -56,7 +62,7 @@ jobs:
         uses: docker/build-push-action@v4
         with:
           context: ./src/monolith
-          push: true
+          push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta-monolith.outputs.tags }}
           labels: ${{ steps.meta-monolith.outputs.labels }}
           cache-from: type=gha
@@ -79,7 +85,7 @@ jobs:
         uses: docker/build-push-action@v4
         with:
           context: ./src/microservices/movies
-          push: true
+          push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta-movies.outputs.tags }}
           labels: ${{ steps.meta-movies.outputs.labels }}
           cache-from: type=gha
@@ -102,7 +108,7 @@ jobs:
         uses: docker/build-push-action@v4
         with:
           context: ./src/microservices/events
-          push: true
+          push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta-events.outputs.tags }}
           labels: ${{ steps.meta-events.outputs.labels }}
           cache-from: type=gha
@@ -125,7 +131,7 @@ jobs:
         uses: docker/build-push-action@v4
         with:
           context: ./src/microservices/proxy
-          push: true
+          push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta-proxy.outputs.tags }}
           labels: ${{ steps.meta-proxy.outputs.labels }}
           cache-from: type=gha
