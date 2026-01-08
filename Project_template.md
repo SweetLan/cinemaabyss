@@ -124,21 +124,25 @@ jobs:
 ```
 Как только сборка отработает и в github registry появятся ваши образы, можно переходить к блоку настройки Kubernetes
 Успешным результатом данного шага является "зеленая" сборка и "зеленые" тесты
+Скрин "зеленой" сборки
+![alt text](image-7.png)
+Скрин "зеленых" тестов
+![alt text](image-8.png)
 
 
 ### Proxy в Kubernetes
 
 #### Шаг 1
 Для деплоя в kubernetes необходимо залогиниться в docker registry Github'а.
-1. Создайте Personal Access Token (PAT) https://github.com/settings/tokens . Создавайте class с правом read:packages
-2. В src/kubernetes/*.yaml (event-service, monolith, movies-service и proxy-service)  отредактируйте путь до ваших образов 
+1. Создан Personal Access Token (PAT) https://github.com/settings/tokens . Создавайте class с правом read:packages
+2. В src/kubernetes/*.yaml (event-service, monolith, movies-service и proxy-service)  отредактированы пути до ваших образов 
 ```bash
  spec:
       containers:
       - name: events-service
         image: ghcr.io/ваш логин/имя репозитория/events-service:latest
 ```
-3. Добавьте в секрет src/kubernetes/dockerconfigsecret.yaml в поле
+3. Добавлен в секрет src/kubernetes/dockerconfigsecret.yaml в поле
 ```bash
  .dockerconfigjson: значение в base64 файла ~/.docker/config.json
 ```
@@ -153,26 +157,24 @@ jobs:
         }
 }
 ```
-то выполните 
-
-и добавьте
+добавлен
 
 ```json 
  "auth": "имя пользователя:токен в base64"
 ```
 
-Чтобы получить значение в base64 можно выполнить команду
+Чтобы получить значение в base64 выполнена команда
 ```bash
  echo -n ваш_логин:ваш_токен | base64
 ```
 
-После заполнения config.json, также прогоните содержимое через base64
+После заполнения config.json, также прогнала содержимое через base64
 
 ```bash
 cat .docker/config.json | base64
 ```
 
-и полученное значение добавляем в
+и полученное значение добавила в
 
 ```bash
  .dockerconfigjson: значение в base64 файла ~/.docker/config.json
@@ -180,17 +182,17 @@ cat .docker/config.json | base64
 
 #### Шаг 2
 
-  Доработайте src/kubernetes/event-service.yaml и src/kubernetes/proxy-service.yaml
+  Доработаны src/kubernetes/event-service.yaml и src/kubernetes/proxy-service.yaml
 
-  - Необходимо создать Deployment и Service 
-  - Доработайте ingress.yaml, чтобы можно было с помощью тестов проверить создание событий
-  - Выполните дальшейшие шаги для поднятия кластера:
+  - Созданы Deployment и Service 
+  - Доработан ingress.yaml, чтобы можно было с помощью тестов проверить создание событий
+  - Выполнены дальшейшие шаги для поднятия кластера:
 
-  1. Создайте namespace:
+  1. Создан namespace:
   ```bash
   kubectl apply -f src/kubernetes/namespace.yaml
   ```
-  2. Создайте секреты и переменные
+  2. Созданы секреты и переменные
   ```bash
   kubectl apply -f src/kubernetes/configmap.yaml
   kubectl apply -f src/kubernetes/secret.yaml
@@ -198,7 +200,7 @@ cat .docker/config.json | base64
   kubectl apply -f src/kubernetes/postgres-init-configmap.yaml
   ```
 
-  3. Разверните базу данных:
+  3. Развернута базу данных:
   ```bash
   kubectl apply -f src/kubernetes/postgres.yaml
   ```
@@ -212,7 +214,7 @@ cat .docker/config.json | base64
   NAME         READY   STATUS    
   postgres-0   1/1     Running   
 
-  4. Разверните Kafka:
+  4. Развернута Kafka:
   ```bash
   kubectl apply -f src/kubernetes/kafka/kafka.yaml
   ```
@@ -222,16 +224,16 @@ cat .docker/config.json | base64
   kubectl -n cinemaabyss logs имя_пода (например - kafka-0)
   ```
 
-  5. Разверните монолит:
+  5. Развернут монолит:
   ```bash
   kubectl apply -f src/kubernetes/monolith.yaml
   ```
-  6. Разверните микросервисы:
+  6. Развернуты микросервисы:
   ```bash
   kubectl apply -f src/kubernetes/movies-service.yaml
   kubectl apply -f src/kubernetes/events-service.yaml
   ```
-  7. Разверните прокси-сервис:
+  7. Развернут прокси-сервис:
   ```bash
   kubectl apply -f src/kubernetes/proxy-service.yaml
   ```
@@ -261,27 +263,28 @@ cat .docker/config.json | base64
   zookeeper-0                       1/1     Running 
 ```
 
-  8. Добавим ingress
+  8. Добавила ingress
 
-  - добавьте аддон
+  -  аддон
   ```bash
   minikube addons enable ingress
   ```
   ```bash
   kubectl apply -f src/kubernetes/ingress.yaml
   ```
-  9. Добавьте в /etc/hosts
+  9. Добавила в /etc/hosts
   127.0.0.1 cinemaabyss.example.com
 
   10. Вызовите
   ```bash
   minikube tunnel
   ```
-  11. Вызовите https://cinemaabyss.example.com/api/movies
+  11. Вызвала https://cinemaabyss.example.com/api/movies
   Вы должны увидеть вывод списка фильмов
   Можно поэкспериментировать со значением   MOVIES_MIGRATION_PERCENT в src/kubernetes/configmap.yaml и убедится, что вызовы movies уходят полностью в новый сервис
+  ![alt text](image-16.png)
 
-  12. Запустите тесты из папки tests/postman
+  12. Запущены тесты из папки tests/postman
   ```bash
    npm run test:kubernetes
   ```
@@ -289,14 +292,21 @@ cat .docker/config.json | base64
   Откройте логи event-service и сделайте скриншот обработки событий
 
 #### Шаг 3
-Добавьте сюда скриншота вывода при вызове https://cinemaabyss.example.com/api/movies и  скриншот вывода event-service после вызова тестов.
-
+Скриншот вывода при вызове https://cinemaabyss.example.com/api/movies
+![alt text](image-9.png)
+Скриншоты вывода event-service после вызова тестов
+![alt text](image-10.png)
+![alt text](image-11.png)
+![alt text](image-12.png)
+![alt text](image-13.png)
+![alt text](image-14.png)
+![alt text](image-15.png)
 
 # Задание 4
-Для простоты дальнейшего обновления и развертывания вам как архитектуру необходимо так же реализовать helm-чарты для прокси-сервиса и проверить работу 
+Для простоты дальнейшего обновления и развертывания реализованы helm-чарты для прокси-сервиса и проверена работа
 
 Для этого:
-1. Перейдите в директорию helm и отредактируйте файл values.yaml
+1.Отредактирован файл values.yaml
 
 ```yaml
 # Proxy service configuration
@@ -320,14 +330,14 @@ proxyService:
     type: ClusterIP
 ```
 
-- Вместо ghcr.io/db-exp/cinemaabysstest/proxy-service напишите свой путь до образа для всех сервисов
-- для imagePullSecret проставьте свое значение (скопируйте из конфигурации kubernetes)
+- Вместо ghcr.io/db-exp/cinemaabysstest/proxy-service указан свой путь до образа для всех сервисов
+- для imagePullSecret проставлено свое значение (скопируйте из конфигурации kubernetes)
   ```yaml
   imagePullSecrets:
       dockerconfigjson: ewoJImF1dGhzIjogewoJCSJnaGNyLmlvIjogewoJCQkiYXV0aCI6ICJaR0l0Wlhod09tZG9jRjl2UTJocVZIa3dhMWhKVDIxWmFVZHJOV2hRUW10aFVXbFZSbTVaTjJRMFNYUjRZMWM9IgoJCX0KCX0sCgkiY3JlZHNTdG9yZSI6ICJkZXNrdG9wIiwKCSJjdXJyZW50Q29udGV4dCI6ICJkZXNrdG9wLWxpbnV4IiwKCSJwbHVnaW5zIjogewoJCSIteC1jbGktaGludHMiOiB7CgkJCSJlbmFibGVkIjogInRydWUiCgkJfQoJfSwKCSJmZWF0dXJlcyI6IHsKCQkiaG9va3MiOiAidHJ1ZSIKCX0KfQ==
   ```
 
-2. В папке ./templates/services заполните шаблоны для proxy-service.yaml и events-service.yaml (опирайтесь на свою kubernetes конфигурацию - смысл helm'а сделать шаблоны для быстрого обновления и установки)
+2. В папке ./templates/services заполнены шаблоны для proxy-service.yaml и events-service.yaml
 
 ```yaml
 template:
@@ -339,7 +349,7 @@ template:
        Тут ваша конфигурация
 ```
 
-3. Проверьте установку
+3. Проверена установка
 Сначала удалим установку руками
 
 ```bash
@@ -362,10 +372,9 @@ kubectl get pods -n cinemaabyss
 minikube tunnel
 ```
 
-Потом вызовите 
-https://cinemaabyss.example.com/api/movies
-и приложите скриншот развертывания helm и вывода https://cinemaabyss.example.com/api/movies
 
+![скриншот развертывания helm ](image-17.png)
+![скриншот вывода https://cinemaabyss.example.com/api/movies](image-18.png)
 ## Удаляем все
 
 ```bash
